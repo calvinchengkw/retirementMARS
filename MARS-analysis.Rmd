@@ -1,0 +1,29 @@
+---
+title: "Analysis of the Malaysia Ageing and Retirement Survey"
+author: "Calvin"
+date: "2025-01-01"
+output: html_document
+---
+
+# 0. Preliminaries 
+
+```{r, warning = F, message = F}
+rm(list=ls())
+library(tidyverse)
+#install.packages("haven")
+```
+
+Loading in the data 
+
+```{r}
+MARSw1 <- haven::read_sav("C:/Users/Calvin/Documents/MARS Wave 1_new.sav")
+MARSw2 <- haven::read_sav("C:/Users/Calvin/Documents/MARS Wave 2_new.sav")
+```
+
+
+Pre-analysis 
+
+```{r}
+```
+
+
