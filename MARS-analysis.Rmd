@@ -48,6 +48,17 @@ id_summary <- data.frame(
 print(id_summary)
 ```
 
+Pick out variables to join: Constant: want preserve only wave 1
+
+Changing: want capture both waves
+
+```{r}
+
+
+
+
+```
+
 Merge datasets using left join, by the MARS1 ids
 
 ```{r}
