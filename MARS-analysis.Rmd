@@ -1,29 +1,59 @@
 ---
-title: "Analysis of the Malaysia Ageing and Retirement Survey"
+title: "Analysis of the Malaysia Ageing and Retirement Survey (MARS) - Wave 1 and 2"
 author: "Calvin"
 date: "2025-01-01"
 output: html_document
 ---
 
-# 0. Preliminaries 
+# 0. Preliminaries
 
 ```{r, warning = F, message = F}
 rm(list=ls())
 library(tidyverse)
-#install.packages("haven")
+#install.packages("skimr")
+library(skimr)
 ```
 
-Loading in the data 
+Import sav files
 
 ```{r}
-MARSw1 <- haven::read_sav("C:/Users/Calvin/Documents/MARS Wave 1_new.sav")
-MARSw2 <- haven::read_sav("C:/Users/Calvin/Documents/MARS Wave 2_new.sav")
+wave1 <- haven::read_sav("C:/Users/Calvin/Documents/MARS Wave 1_new.sav")
+wave2 <- haven::read_sav("C:/Users/Calvin/Documents/MARS Wave 2_new.sav")
 ```
 
+# 1. Pre-analysis and wave merge
 
-Pre-analysis 
+Check overlaps of IDs in Wave 1 and 2. Wave 1 uses "UNIQUEID", Wave 2 uses a whole different id coding system "sampleid", but luckily includes a variable "MARS1" that tracks the Wave 1 UNIQUEID of each Wave 2 respondent.
 
 ```{r}
+# Rename variables 
+wave1 <- wave1 %>% rename(id_wave1 = UNIQUEID)
+wave2 <- wave2 %>% rename(id_wave2 = sampleid, id_wave1_reference = MARS1)
+
+# ID overlap analysis
+# Match wave2's MARS1 with wave1's UNIQUEID
+common_ids <- intersect(wave1$id_wave1, wave2$id_wave1_reference)
+unique_wave1 <- setdiff(wave1$id_wave1, wave2$id_wave1_reference)
+unique_wave2 <- setdiff(wave2$id_wave1_reference, wave1$id_wave1)
+
+# Summary of overlap
+id_summary <- data.frame(
+  Total_Wave1 = nrow(wave1),
+  Total_Wave2 = nrow(wave2),
+  Common_IDs = length(common_ids),
+  Unique_Wave1 = length(unique_wave1),
+  Unique_Wave2 = length(unique_wave2)
+)
+
+print(id_summary)
 ```
 
+Merge datasets using left join, by the MARS1 ids
 
+```{r}
+# Merge the datasets using the reference IDs for diagnostics
+merged_data <- wave2 %>%
+  filter(id_wave1_reference %in% wave1$id_wave1) %>%
+  left_join(wave1, by = c("id_wave1_reference" = "id_wave1"), suffix = c("_wave2", "_wave1"))
+
+```
