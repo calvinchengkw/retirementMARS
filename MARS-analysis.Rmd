@@ -10,7 +10,7 @@ output: html_document
 ```{r, warning = F, message = F}
 rm(list=ls())
 
-#install.packages(c("tidyverse","skimr","fixest","ivreg","rdrobust","margins","mgcv","boot"))
+#install.packages(c("tidyverse","skimr","fixest","ivreg","rdrobust","margins","mgcv","boot","binsreg","AER","fwildclusterboot"))
 
 library(tidyverse)
 library(skimr)
@@ -20,14 +20,19 @@ library(rdrobust)   # Regression discontinuity
 library(margins)    # Marginal effects
 library(mgcv)       # Spline regressions
 library(boot)
+library(binsreg)
+library(AER)
+library(fwildclusterboot)
 
 ```
 
 Import sav files
 
 ```{r}
-wave1 <- haven::read_sav("C:/Users/calvi/retirementMARS/MARS Wave 1_new.sav")
-wave2 <- haven::read_sav("C:/Users/calvi/retirementMARS/MARS Wave 2_new.sav")
+wave1 <- haven::read_sav("C:/Users/Calvin/Documents/MARS Wave 1_new.sav")
+wave2 <- haven::read_sav("C:/Users/Calvin/Documents/MARS Wave 2_new.sav")
+#wave1 <- haven::read_sav("C:/Users/calvi/retirementMARS/MARS Wave 1_new.sav")
+#wave2 <- haven::read_sav("C:/Users/calvi/retirementMARS/MARS Wave 2_new.sav")
 ```
 
 # 1. Pre-analysis and wave merge
@@ -87,20 +92,21 @@ merged_data <- wave2 %>%
 wave1_1 <- wave1 %>%
   rename(A205 = A205_recode) %>%
   mutate(
-    retired = ifelse(D101_new == 5, 1, 0),
-    nosalary = ifelse(E102_1_S_1 != 3 & E102_1_S_2 != 3 & E102_1_S_3 != 3, 1, 0),
-    retired2 = ifelse(D101_new == 5 & nosalary == 1, 1, 0),
-    retired3 = ifelse(D101_new == 5 & D132_1A != 6, 1, 0),
-    retired_notforced = ifelse(D101_new == 5 & D133 != 2, 1, 0),
+    retired = as.numeric(D101_new == 5),
+    nosalary = as.numeric(E102_1_S_1 != 3 & E102_1_S_2 != 3 & E102_1_S_3 != 3),
+    retired2 = as.numeric(D101_new == 5 & nosalary == 1),
+    retired3 = as.numeric(D101_new == 5 & D132_1A != 6),
+    retired_notforced = as.numeric(D101_new == 5 & D133 != 2),
     retired_forced = case_when(D133 == 2 ~ 1, D133 == 1 | D133 == 3 ~ 0, TRUE ~ NA_real_),
     retired_volun = case_when(D133 == 1 ~ 1, D133 == 2 | D133 == 3 ~ 0, TRUE ~ NA_real_),
-    retired_volun3 = ifelse(D133 == 1 | D133 == 2, 1, 0),
-    retired_forced2 = ifelse(D133 == 3 | D133 == 2, 1, 0),
+    retired_volun3 = as.numeric(D133 == 1 | D133 == 2),
+    retired_forced2 = as.numeric(D133 == 3 | D133 == 2),
     money_rec_child = rowSums(select(., starts_with("B104B_1_A_")), na.rm = TRUE),
     money_rec_parent = rowSums(select(., starts_with("B203B_1_A_")), na.rm = TRUE),
     money_rec_sib = rowSums(select(., starts_with("B304B_1_A_")), na.rm = TRUE),
-    retired_nosupport = ifelse(D101_new == 5 & money_rec_child < 1 & money_rec_parent < 1 & money_rec_sib < 1, 1, 0),
-    retireage = Age - (2018 - D101D_2),
+    retired_nosupport = as.numeric(D101_new == 5 & money_rec_child < 1 & money_rec_parent < 1 & money_rec_sib < 1),
+    retireage = as.numeric(Age - (2018 - D101D_2)),
+    Age = as.numeric(Age),
     agesq = Age^2,
     age3 = Age^3,
     age4 = Age^4,
@@ -118,8 +124,8 @@ wave1_1 <- wave1 %>%
     C301all = C301D + C301G + C301O + C301P + C301Q + C301R + C301S + C301T - 
               (C301A + C301B + C301C + C301E + C301H + C301I + C301J + C301K + C301L + C301N),
     stdC301 = scale(C301all),
-    gender2 = ifelse(A101RSex == 1, 0, 1),
-   depressed = recode(as.numeric(C301C), `1` = 5, `2` = 4, `3` = 3, `4` = 2, `5` = 1),
+    gender2 = as.numeric(A101RSex == 1),
+    depressed = recode(as.numeric(C301C), `1` = 5, `2` = 4, `3` = 3, `4` = 2, `5` = 1),
     stress = recode(as.numeric(C301E), `1` = 5, `2` = 4, `3` = 3, `4` = 2, `5` = 1),
     troublecon = recode(as.numeric(C301B), `1` = 5, `2` = 4, `3` = 3, `4` = 2, `5` = 1),
     isolation = recode(as.numeric(C301L), `1` = 5, `2` = 4, `3` = 3, `4` = 2, `5` = 1),
@@ -127,52 +133,41 @@ wave1_1 <- wave1 %>%
     socialwb = (C306B + C306D + C306H + C306N + C306R + C306Q + C306M) / 7,
     totalwb = (stress + depressed + socialwb) / 9,
     illnesses = rowSums(select(., starts_with("C104A_1_S_")), na.rm = TRUE),
-    past55 = ifelse(Age >= 55, 1, 0),
+    past55 = as.numeric(Age >= 55),
     stdage = Age - 55,
     stdagesq = stdage^2,
-    pen = ifelse(E102_1_S_1 == 1 | E102_1_S_2 == 1 | E102_1_S_3 == 1, 1, 0),
+    pen = as.numeric(E102_1_S_1 == 1 | E102_1_S_2 == 1 | E102_1_S_3 == 1),
     wealth = rowSums(select(., starts_with("F105B_A_")), na.rm = TRUE) + rowSums(select(., starts_with("F104B_A_")), na.rm = TRUE),
-    married = ifelse(A204_1 == 2, 1, 0)
+    married = as.numeric(A204_1 == 2)
   )
 
-# Regression Discontinuity Design (RDD)
-rdd_model <- rdrobust(wave1_1$totalwb, wave1_1$stdage, c = 0, fuzzy = wave1_1$retired)
 
-# Instrumental Variable Regression (IV)
-iv_model <- ivreg(totalwb ~ stdage + educ + gender2 + illnesses + A200B | past55, data = wave1_1)
 
-# Bootstrap Standard Errors
-boot_iv <- boot(data = wave1_1, statistic = function(data, indices) {
-  d <- data[indices, ]
-  coef(ivreg(totalwb ~ stdage + educ + gender2 + illnesses + A200B | past55, data = d))
-}, R = 1000)
+## first stage
 
-# Visualizing Retirement by Age
+# Ensure `wave1_1` has the needed variables
+wave1_1 <- wave1_1 %>% filter(Age <= 85)
+
+wave1_1_bins <- wave1_1 %>% 
+  group_by(Age) %>% 
+  summarise(mean_retired = mean(retired, na.rm = TRUE))
+
+# produce a binscatter plot:
+# - points: the average retired value by age
+# - smooth line: a quadratic (qfit) linear model fitted on the original data
+# - vertical line at the cutoff (rd(55))
 ggplot(wave1_1, aes(x = Age, y = retired)) +
-  geom_smooth(method = "loess", se = TRUE) +
+  stat_summary(fun = mean, geom = "point") +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, linetype = "solid") +
   geom_vline(xintercept = 55, linetype = "dashed") +
-  labs(title = "Retirement by Age", x = "Age", y = "Retirement Probability")
-
-# Save results
-summary(iv_model)
-summary(rdd_model)
-
-# Exporting Descriptive Statistics
-descriptive_stats <- wave1_1 %>%
-  select(Age, gender2, educ, married, illnesses, C101, B101, A200B, savings, totalwb, socialwb, mentalwb) %>%
-  summary()
-
-write.csv(descriptive_stats, "descriptive_stats.csv")
-
-# Kernel Density Plots
-ggplot(wave1_1, aes(x = Age)) +
-  geom_density(fill = "blue", alpha = 0.3) +
-  geom_vline(xintercept = 55, linetype = "dashed") +
-  labs(title = "Kernel Density of Age", x = "Age", y = "Density")
+  labs(x = "Age", y = "Retirement")
+print(p)
 
 
+#Total wellbeing model
+model_total <- ivreg(totalwb ~ stdage + retired | stdage + past55, data = wave1_1)
 
-
+summary(model_total)
 
 
 
