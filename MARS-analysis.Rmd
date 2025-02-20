@@ -22,7 +22,6 @@ library(mgcv)       # Spline regressions
 library(boot)
 library(binsreg)
 library(AER)
-library(fwildclusterboot)
 
 ```
 
@@ -83,34 +82,83 @@ merged_data <- wave2 %>%
 
 ```
 
-## Replication of the Wave 1 analysis in 2023, done in Stata code
+## Replication of the Wave 1 analysis in 2023
 
 ```{r}
 
+# Variable creation
 
-# Create retirement variables
-wave1_1 <- wave1 %>%
-  rename(A205 = A205_recode) %>%
+#rename, recode variables and orient (higher values indicate higher wellbeing)
+wave1 <- wave1 %>%
   mutate(
-    retired = as.numeric(D101_new == 5),
-    nosalary = as.numeric(E102_1_S_1 != 3 & E102_1_S_2 != 3 & E102_1_S_3 != 3),
-    retired2 = as.numeric(D101_new == 5 & nosalary == 1),
-    retired3 = as.numeric(D101_new == 5 & D132_1A != 6),
-    retired_notforced = as.numeric(D101_new == 5 & D133 != 2),
-    retired_forced = case_when(D133 == 2 ~ 1, D133 == 1 | D133 == 3 ~ 0, TRUE ~ NA_real_),
-    retired_volun = case_when(D133 == 1 ~ 1, D133 == 2 | D133 == 3 ~ 0, TRUE ~ NA_real_),
-    retired_volun3 = as.numeric(D133 == 1 | D133 == 2),
-    retired_forced2 = as.numeric(D133 == 3 | D133 == 2),
-    money_rec_child = rowSums(select(., starts_with("B104B_1_A_")), na.rm = TRUE),
-    money_rec_parent = rowSums(select(., starts_with("B203B_1_A_")), na.rm = TRUE),
+    depressed  = dplyr::recode(as.numeric(C301C), "1" = 5, "2" = 4, "3" = 3, "4" = 2, "5" = 1),
+    stress     = dplyr::recode(as.numeric(C301E), "1" = 5, "2" = 4, "3" = 3, "4" = 2, "5" = 1),
+    troublecon = dplyr::recode(as.numeric(C301B), "1" = 5, "2" = 4, "3" = 3, "4" = 2, "5" = 1),
+    isolation  = dplyr::recode(as.numeric(C301L), "1" = 5, "2" = 4, "3" = 3, "4" = 2, "5" = 1)
+  ) %>%
+  rename(
+    A205             = A205_recode,
+    happy            = C301D,
+    satisfaction     = C301G,
+    activitiesfamily = C306B,
+    volunteer        = C306D,
+    read             = C306H,
+    hobbies          = C306N,
+    homemaint        = C306R,
+    socialouting     = C306Q,
+    exercise         = C306M
+  )
+         
+#retirement variables
+wave1 <- wave1 %>%
+  mutate(retired = as.numeric(D101_new == 5))
+  # full overlap between retired year listed and not working for pay currently
+
+#money received
+wave1 <- wave1 %>% 
+  mutate(
+    money_rec_child = rowSums(select(., starts_with("B104B_1_A_")), na.rm = TRUE), 
+    money_rec_parent = rowSums(select(., starts_with("B203B_1_A_")), na.rm = TRUE), 
     money_rec_sib = rowSums(select(., starts_with("B304B_1_A_")), na.rm = TRUE),
-    retired_nosupport = as.numeric(D101_new == 5 & money_rec_child < 1 & money_rec_parent < 1 & money_rec_sib < 1),
-    retireage = as.numeric(Age - (2018 - D101D_2)),
-    Age = as.numeric(Age),
-    agesq = Age^2,
-    age3 = Age^3,
-    age4 = Age^4,
-    educ = case_when(
+    nosupport = as.numeric(money_rec_child < 1 & money_rec_parent < 1 & money_rec_sib < 1),
+    income = rowSums(select(., starts_with("D102a_")), na.rm = TRUE),
+    nomoney = as.numeric(nosupport == 1 & income < 1)
+  )
+
+#age variables and standardising ages
+wave1 <- wave1 %>% 
+  mutate(
+    age            = as.numeric(Age),
+    retireage      = as.numeric(age - (2018 - D101D_2)),
+    agesq          = age^2,
+    age3           = age^3,
+    age4           = age^4,
+    gender2        = as.numeric(A101RSex == 1),
+    past55         = as.numeric(age >= 55),
+    past60         = as.numeric(age >= 60),
+    past54         = as.numeric(age >= 54),
+    past56         = as.numeric(age >= 56),
+    stdage         = age - 55,
+    stdagesq       = stdage^2,        # equivalent to (age-55)^2
+    stdage3        = stdage^3,        # equivalent to (age-55)^3
+    stdpast55std   = as.numeric(stdage >= 0),
+    stdpast54std   = as.numeric(age >= 54),  # indicator for age>=54
+    stdpast56std   = as.numeric(age >= 56),  # indicator for age>=56
+    stdpast60std   = as.numeric(age >= 60),  # indicator for age>=60
+    int55age       = past55 * age,
+    int55agesq     = past55 * agesq,
+    int55age3      = past55 * age3,
+    stdint55age    = ifelse(stdage >= 0, stdage, 0),
+    stdint55agesq  = ifelse(stdage >= 0, stdagesq, 0),
+    stdint55age3   = ifelse(stdage >= 0, stdage3, 0),
+    int56age       = past56 * age,
+    int56agesq     = past56 * agesq,
+    int56age3      = past56 * age3
+  )
+
+#education variables
+wave1 <- wave1 %>% 
+  mutate(educ = case_when(
       A205 == 2 ~ 1,
       A205 == 3 ~ 2,
       A205 == 4 ~ 6,
@@ -119,53 +167,60 @@ wave1_1 <- wave1 %>%
       A205 == 7 | A205 == 8 ~ 12,
       A205 == 9 ~ 15,
       A205 == 10 ~ 17,
-      TRUE ~ 0
-    ),
-    C301all = C301D + C301G + C301O + C301P + C301Q + C301R + C301S + C301T - 
-              (C301A + C301B + C301C + C301E + C301H + C301I + C301J + C301K + C301L + C301N),
-    stdC301 = scale(C301all),
-    gender2 = as.numeric(A101RSex == 1),
-    depressed = recode(as.numeric(C301C), `1` = 5, `2` = 4, `3` = 3, `4` = 2, `5` = 1),
-    stress = recode(as.numeric(C301E), `1` = 5, `2` = 4, `3` = 3, `4` = 2, `5` = 1),
-    troublecon = recode(as.numeric(C301B), `1` = 5, `2` = 4, `3` = 3, `4` = 2, `5` = 1),
-    isolation = recode(as.numeric(C301L), `1` = 5, `2` = 4, `3` = 3, `4` = 2, `5` = 1),
-    mentalwb = (stress + depressed) / 2,
-    socialwb = (C306B + C306D + C306H + C306N + C306R + C306Q + C306M) / 7,
-    totalwb = (stress + depressed + socialwb) / 9,
+      TRUE ~ 0))
+    
+#outcome variables
+wave1 <- wave1 %>% 
+  mutate(
+    mentalwb = (stress + depressed+isolation +troublecon + happy + satisfaction) / 6,
+    socialwb = (activitiesfamily + volunteer + read + hobbies + homemaint + socialouting + exercise) / 7,
+    totalwb = (stress + depressed+isolation + troublecon + activitiesfamily + volunteer + read + hobbies + homemaint + socialouting + exercise) / 13)
+
+  
+#other assets/wealth indicators for heterogeneity analysis
+wave1 <- wave1 %>% 
+  mutate(
     illnesses = rowSums(select(., starts_with("C104A_1_S_")), na.rm = TRUE),
-    past55 = as.numeric(Age >= 55),
-    stdage = Age - 55,
-    stdagesq = stdage^2,
     pen = as.numeric(E102_1_S_1 == 1 | E102_1_S_2 == 1 | E102_1_S_3 == 1),
     wealth = rowSums(select(., starts_with("F105B_A_")), na.rm = TRUE) + rowSums(select(., starts_with("F104B_A_")), na.rm = TRUE),
-    married = as.numeric(A204_1 == 2)
-  )
+    married = as.numeric(A204_1 == 2))
 
 
+# Subset
+wave1_subset <- wave1 %>%
+  filter(age <= 85) %>%
+  select(id_wave1,retired,money_rec_child,money_rec_sib,money_rec_parent, retireage, age, gender2, past55, stdage, stdagesq, educ, mentalwb, socialwb, totalwb, stress, depressed, isolation, troublecon, happy, satisfaction, activitiesfamily, volunteer, read, hobbies, homemaint, socialouting, exercise, illnesses, pen, wealth,married)
 
-## first stage
 
-# Ensure `wave1_1` has the needed variables
-wave1_1 <- wave1_1 %>% filter(Age <= 85)
-
-wave1_1_bins <- wave1_1 %>% 
-  group_by(Age) %>% 
+#calculate bins for scatterplot
+wave1_bins <- wave1_subset %>% 
+  group_by(age) %>% 
   summarise(mean_retired = mean(retired, na.rm = TRUE))
 
+```
+
+```{r}
 # produce a binscatter plot:
 # - points: the average retired value by age
 # - smooth line: a quadratic (qfit) linear model fitted on the original data
 # - vertical line at the cutoff (rd(55))
-ggplot(wave1_1, aes(x = Age, y = retired)) +
-  stat_summary(fun = mean, geom = "point") +
-  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, linetype = "solid") +
+ggplot(wave1_subset, aes(x = age, y = retired)) +
+  stat_summary(fun = mean, geom = "point", binwidth = 5) +
+  geom_smooth(data = dplyr::filter(wave1_subset, age <= 55 & age <70),
+              method = "lm", formula = y ~ poly(x, 2, raw = TRUE),
+              se = FALSE, linetype = "solid", colour = "blue") +
+  geom_smooth(data = dplyr::filter(wave1_subset, age >= 55 & age >50),
+              method = "lm", formula = y ~ poly(x, 2, raw = TRUE),
+              se = FALSE, linetype = "solid", colour = "red") +
   geom_vline(xintercept = 55, linetype = "dashed") +
-  labs(x = "Age", y = "Retirement")
-print(p)
+  labs(x = "Age", y = "Retirement", 
+       title = "first stage: retirement on age at discontinuity 55")
 
 
 #Total wellbeing model
-model_total <- ivreg(totalwb ~ stdage + retired | stdage + past55, data = wave1_1)
+model_total <- ivreg(totalwb2 ~ stdage + stdint55age + stdint55agesq + educ + hhlgender + illnesses + a200b + retired |
+                       stdage + stdint55age + stdint55agesq + educ + hhlgender + illnesses + a200b + past55,
+                       data = wave1_subset)
 
 summary(model_total)
 
